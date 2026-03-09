@@ -72,17 +72,22 @@ async def download_video(url: str, quality: str = "720", tmpdir: str = "/tmp") -
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE
     )
-    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=180)
+    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
 
     if proc.returncode != 0:
-        logger.error(f"yt-dlp error: {stderr.decode()[:500]}")
+        logger.error(f"yt-dlp error: {stderr.decode()[:1000]}")
         return None
 
     # Find downloaded file
-    for f in os.listdir(tmpdir):
-        full = os.path.join(tmpdir, f)
-        if os.path.isfile(full) and f.endswith((".mp4", ".mp3", ".webm", ".mkv")):
-            return full
+    try:
+        files = os.listdir(tmpdir)
+        for f in files:
+            full = os.path.join(tmpdir, f)
+            if os.path.isfile(full) and f.endswith((".mp4", ".mp3", ".webm", ".mkv", ".m4a")):
+                return full
+    except Exception as e:
+        logger.error(f"Error reading tmpdir {tmpdir}: {e}")
+        
     return None
 
 
