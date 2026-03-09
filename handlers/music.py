@@ -89,19 +89,47 @@ async def download_song_mp3(artist: str, title: str, tmpdir: str) -> str | None:
     return None
 
 
-@router.message(F.voice | F.audio)
-async def handle_audio(message: Message, db):
+@router.message(F.voice | F.audio | F.text)
+async def handle_audio_or_text(message: Message, db):
+    # Ignore start and menu texts
+    if message.text and message.text.startswith("/") or message.text in {
+        "🎬 Video yuklab olish", "🎬 Download Video", "🎬 Скачать Видео",
+        "🎵 Musiqa tanish", "🎵 Recognize Music", "🎵 Распознать музыку", "🎵 Musiqa qidirish",
+        "⚙️ Sozlamalar", "⚙️ Settings", "⚙️ Настройки",
+        "ℹ️ Yordam", "ℹ️ Help", "ℹ️ Помощь"
+    }:
+        return
+
+    # Ignore URLs (handled by video.py)
+    if message.text and "http" in message.text:
+        return
+
     user = await db.get_user(message.from_user.id)
     lang = user["language"] if user else "uz"
 
-    status_msg = await message.answer(t("recognizing", lang))
+    if message.text:
+        # Search music by text
+        status_msg = await message.answer(t("recognizing", lang))
+        query = message.text.strip()
+        song_info = {
+            "artist": "Qidiruv",
+            "title": query,
+            "album": "—",
+            "full_title": query
+        }
+    else:
+        # Recognize from audio/voice
+        status_msg = await message.answer(t("recognizing", lang))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            if message.voice:
+                file = await message.bot.get_file(message.voice.file_id)
+            else:
+                file = await message.bot.get_file(message.audio.file_id)
 
-    # Download the audio file
-    with tempfile.TemporaryDirectory() as tmpdir:
-        if message.voice:
-            file = await message.bot.get_file(message.voice.file_id)
-        else:
-            file = await message.bot.get_file(message.audio.file_id)
+            file_path = os.path.join(tmpdir, "audio.ogg")
+            await message.bot.download_file(file.file_path, file_path)
+
+            song_info = await recognize_audio(file_path)
 
         file_path = os.path.join(tmpdir, "audio.ogg")
         await message.bot.download_file(file.file_path, file_path)

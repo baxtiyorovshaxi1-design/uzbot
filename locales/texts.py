@@ -27,34 +27,52 @@ TEXTS = {
     "welcome": {
         "uz": (
             "👋 <b>Assalomu alaykum, {name}!</b>\n\n"
-            "🤖 Men <b>UzBot</b> — professional media yuklovchi botman!\n\n"
+            "🤖 Men <b>Oson Yukla Bot</b> - professional media yuklovchi botman!\n\n"
             "📥 <b>Nima qila olaman:</b>\n"
             "• 🎬 YouTube, Instagram, TikTok videolarini yuklab beraman\n"
             "• 🎵 Audio yuborсangiz — musiqa nomini topaman\n"
+            "• 🔍 Musiqa qidiruv tizimi orqali qo'shiq topaman\n"
             "• 📝 To'liq musiqa matni (lyrics) beraman\n"
             "• 🎶 Musiqani to'liq yuklab beraman\n\n"
-            "Boshlash uchun link yoki audio yuboring! 👇"
+            "Boshlash uchun pastdagi tugmalardan foydalaning! 👇"
         ),
         "en": (
             "👋 <b>Hello, {name}!</b>\n\n"
-            "🤖 I'm <b>UzBot</b> — your professional media downloader bot!\n\n"
+            "🤖 I'm <b>Oson Yukla Bot</b> — your professional media downloader bot!\n\n"
             "📥 <b>What I can do:</b>\n"
             "• 🎬 Download videos from YouTube, Instagram, TikTok\n"
             "• 🎵 Recognize music from audio clips\n"
+            "• 🔍 Search for songs by name\n"
             "• 📝 Get full song lyrics\n"
             "• 🎶 Download full songs\n\n"
-            "Send a link or audio to get started! 👇"
+            "Use the buttons below to get started! 👇"
         ),
         "ru": (
             "👋 <b>Привет, {name}!</b>\n\n"
-            "🤖 Я <b>UzBot</b> — профессиональный бот для скачивания медиа!\n\n"
+            "🤖 Я <b>Oson Yukla Bot</b> — профессиональный бот для скачивания медиа!\n\n"
             "📥 <b>Что я умею:</b>\n"
             "• 🎬 Скачиваю видео с YouTube, Instagram, TikTok\n"
             "• 🎵 Распознаю музыку по аудио\n"
+            "• 🔍 Ищу музыку по названию\n"
             "• 📝 Показываю текст песни (lyrics)\n"
             "• 🎶 Скачиваю полную песню\n\n"
-            "Отправьте ссылку или аудио, чтобы начать! 👇"
+            "Используйте кнопки ниже, чтобы начать! 👇"
         )
+    },
+    "send_link_prompt": {
+        "uz": "🔗 Menga YouTube, Instagram yoki TikTok linkini (havolasini) yuboring:",
+        "en": "🔗 Send me a YouTube, Instagram, or TikTok link:",
+        "ru": "🔗 Отправьте мне ссылку на YouTube, Instagram или TikTok:"
+    },
+    "send_audio_prompt": {
+        "uz": "🎵 Musiqani tanish uchun menga ovozli xabar (voice) yoki audio fayl (15-30 soniyalik) yuboring.\n🔍 Yoki qo'shiqchi/qo'shiq nomini yozib qidiring (masalan: `Doxxim`):",
+        "en": "🎵 Send me a voice message or audio file (15-30s) to recognize the music.\n🔍 Or search by artist/song name (e.g., `Adele`):",
+        "ru": "🎵 Отправьте мне голосовое сообщение или аудиофайл (15-30 сек) для распознавания.\n🔍 Или введите имя артиста/песни для поиска (например: `Eminem`):"
+    },
+    "search_results": {
+        "uz": "🔍 <b>Qidiruv natijalari:</b>\nQo'shiqni tanlang:",
+        "en": "🔍 <b>Search results:</b>\nSelect a song:",
+        "ru": "🔍 <b>Результаты поиска:</b>\nВыберите песню:"
     },
 
     # ── SUBSCRIPTION CHECK ──────────────────────────────────────────

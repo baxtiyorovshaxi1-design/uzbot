@@ -13,6 +13,30 @@ from config import UZBEKISTAN_REGIONS
 
 router = Router()
 
+@router.message(F.text.in_({"🎬 Video yuklab olish", "🎬 Download Video", "🎬 Скачать Видео"}))
+async def menu_video(message: Message, db):
+    user = await db.get_user(message.from_user.id)
+    lang = user["language"] if user else "uz"
+    await message.answer(t("send_link_prompt", lang))
+
+@router.message(F.text.in_({"🎵 Musiqa tanish", "🎵 Recognize Music", "🎵 Распознать музыку", "🎵 Musiqa qidirish"}))
+async def menu_music(message: Message, db):
+    user = await db.get_user(message.from_user.id)
+    lang = user["language"] if user else "uz"
+    await message.answer(t("send_audio_prompt", lang))
+
+@router.message(F.text.in_({"⚙️ Sozlamalar", "⚙️ Settings", "⚙️ Настройки"}))
+async def menu_settings(message: Message, state: FSMContext, db):
+    await message.answer(t("choose_language", "uz"), reply_markup=language_keyboard())
+    await state.set_state(OnboardingState.choosing_language)
+
+@router.message(F.text.in_({"ℹ️ Yordam", "ℹ️ Help", "ℹ️ Помощь"}))
+async def menu_help(message: Message, db):
+    user = await db.get_user(message.from_user.id)
+    lang = user["language"] if user else "uz"
+    await message.answer(t("welcome", lang, name=message.from_user.first_name))
+
+
 
 class OnboardingState(StatesGroup):
     choosing_language = State()
