@@ -56,9 +56,8 @@ async def get_lyrics(artist: str, title: str) -> str | None:
     return None
 
 
-async def download_song_mp3(artist: str, title: str, tmpdir: str) -> str | None:
+async def download_song_mp3(query: str, tmpdir: str) -> str | None:
     """Download song from YouTube as MP3"""
-    query = f"{artist} - {title}"
     output_template = os.path.join(tmpdir, "%(title).50s.%(ext)s")
 
     cmd = [
@@ -111,9 +110,17 @@ async def handle_audio_or_text(message: Message, db):
         # Search music by text
         status_msg = await message.answer(t("recognizing", lang))
         query = message.text.strip()
+        # Parse "Artist - Song" format if present, otherwise use query as both
+        if " - " in query:
+            parts = query.split(" - ", 1)
+            artist = parts[0].strip()
+            title = parts[1].strip()
+        else:
+            artist = query
+            title = query
         song_info = {
-            "artist": "Qidiruv",
-            "title": query,
+            "artist": artist,
+            "title": title,
             "album": "—",
             "full_title": query
         }
@@ -162,7 +169,7 @@ async def handle_download_music(callback: CallbackQuery, db):
     await db.log_usage(callback.from_user.id, "music_download")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        file_path = await download_song_mp3(song["artist"], song["title"], tmpdir)
+        file_path = await download_song_mp3(song["full_title"], tmpdir)
 
         if not file_path:
             await callback.message.edit_text(t("download_error", lang))
