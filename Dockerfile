@@ -16,6 +16,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Always install the latest yt-dlp (YouTube/Instagram change APIs frequently)
+RUN pip install --no-cache-dir --upgrade yt-dlp
+
 # Copy bot files
 COPY . .
 

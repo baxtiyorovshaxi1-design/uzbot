@@ -131,12 +131,6 @@ async def handle_audio_or_text(message: Message, db):
 
             song_info = await recognize_audio(file_path)
 
-        file_path = os.path.join(tmpdir, "audio.ogg")
-        await message.bot.download_file(file.file_path, file_path)
-
-        # Recognize
-        song_info = await recognize_audio(file_path)
-
     if not song_info:
         await status_msg.edit_text(t("music_not_found", lang))
         return
@@ -150,11 +144,11 @@ async def handle_audio_or_text(message: Message, db):
           artist=song_info["artist"],
           title=song_info["title"],
           album=song_info["album"]),
-        reply_markup=music_action_keyboard(song_info["artist"], song_info["title"], lang)
+        reply_markup=music_action_keyboard(lang)
     )
 
 
-@router.callback_query(F.data.startswith("dl_music_"))
+@router.callback_query(F.data == "dl_music")
 async def handle_download_music(callback: CallbackQuery, db):
     user = await db.get_user(callback.from_user.id)
     lang = user["language"] if user else "uz"
@@ -186,7 +180,7 @@ async def handle_download_music(callback: CallbackQuery, db):
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("lyrics_"))
+@router.callback_query(F.data == "lyrics")
 async def handle_lyrics(callback: CallbackQuery, db):
     user = await db.get_user(callback.from_user.id)
     lang = user["language"] if user else "uz"

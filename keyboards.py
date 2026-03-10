@@ -52,19 +52,18 @@ def video_quality_keyboard(lang: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def music_action_keyboard(artist: str, title: str, lang: str) -> InlineKeyboardMarkup:
+def music_action_keyboard(lang: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    query = f"{artist} - {title}".replace(" ", "_")[:50]
     builder.row(
         InlineKeyboardButton(
             text=t("btn_download_music", lang),
-            callback_data=f"dl_music_{query}"
+            callback_data="dl_music"
         )
     )
     builder.row(
         InlineKeyboardButton(
             text=t("btn_get_lyrics", lang),
-            callback_data=f"lyrics_{query}"
+            callback_data="lyrics"
         )
     )
     return builder.as_markup()
