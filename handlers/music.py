@@ -9,7 +9,7 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, FSInputFile
 
 from locales.texts import t
-from keyboards import music_action_keyboard
+from keyboards import music_action_keyboard, search_results_keyboard, SONGS_PER_PAGE
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -46,24 +46,24 @@ async def recognize_audio(file_path: str) -> dict | None:
         return None
 
 
-async def search_song(query: str) -> dict | None:
-    """Search for a song by any text using Shazam"""
+async def search_songs(query: str, limit: int = 40) -> list:
+    """Search multiple songs by text using Shazam"""
     try:
         from shazamio import Shazam
         shazam = Shazam()
-        results = await shazam.search_track(query=query, limit=1)
+        results = await shazam.search_track(query=query, limit=limit)
         if not results:
-            return None
+            return []
         hits = results.get("tracks", {}).get("hits", [])
-        if not hits:
-            return None
-        track = hits[0].get("track", {})
-        if not track:
-            return None
-        return _parse_track(track)
+        songs = []
+        for hit in hits:
+            track = hit.get("track", {})
+            if track:
+                songs.append(_parse_track(track))
+        return songs
     except Exception as e:
         logger.error(f"Shazam search error: {e}")
-        return None
+        return []
 
 
 async def get_lyrics(artist: str, title: str) -> str | None:
@@ -118,7 +118,7 @@ async def download_song_mp3(query: str, tmpdir: str) -> str | None:
 
 @router.message(F.voice | F.audio | F.text)
 async def handle_audio_or_text(message: Message, db):
-    # Ignore start and menu texts
+    # Ignore menu/command texts
     if message.text and message.text.startswith("/") or message.text in {
         "🎬 Video yuklab olish", "🎬 Download Video", "🎬 Скачать Видео",
         "🎵 Musiqa tanish", "🎵 Recognize Music", "🎵 Распознать музыку", "🎵 Musiqa qidirish",
@@ -127,7 +127,6 @@ async def handle_audio_or_text(message: Message, db):
     }:
         return
 
-    # Ignore URLs (handled by video.py)
     if message.text and "http" in message.text:
         return
 
@@ -135,26 +134,24 @@ async def handle_audio_or_text(message: Message, db):
     lang = user["language"] if user else "uz"
 
     if message.text:
-        # Search music by text using Shazam
         status_msg = await message.answer(t("recognizing", lang))
         query = message.text.strip()
-        song_info = await search_song(query)
 
-        # Fallback if Shazam search fails
-        if not song_info:
-            if " - " in query:
-                parts = query.split(" - ", 1)
-                artist = parts[0].strip()
-                title = parts[1].strip()
-            else:
-                artist = "🔍"
-                title = query
-            song_info = {
-                "artist": artist,
-                "title": title,
-                "album": "—",
-                "full_title": query
-            }
+        songs = await search_songs(query, limit=40)
+
+        if not songs:
+            await status_msg.edit_text(t("music_not_found", lang))
+            return
+
+        await db.save_search_results(message.from_user.id, songs)
+        await db.log_usage(message.from_user.id, "music_search")
+
+        total_pages = (len(songs) + SONGS_PER_PAGE - 1) // SONGS_PER_PAGE
+        await status_msg.edit_text(
+            t("search_results_found", lang, count=len(songs), query=query),
+            reply_markup=search_results_keyboard(songs, 0, lang)
+        )
+
     else:
         # Recognize from audio/voice
         status_msg = await message.answer(t("recognizing", lang))
@@ -166,30 +163,80 @@ async def handle_audio_or_text(message: Message, db):
 
             file_path = os.path.join(tmpdir, "audio.ogg")
             await message.bot.download_file(file.file_path, file_path)
-
             song_info = await recognize_audio(file_path)
 
-    if not song_info:
-        await status_msg.edit_text(t("music_not_found", lang))
+        if not song_info:
+            await status_msg.edit_text(t("music_not_found", lang))
+            return
+
+        await db.save_song_cache(
+            message.from_user.id,
+            song_info["artist"],
+            song_info["title"],
+            song_info["album"],
+            song_info["full_title"]
+        )
+        await db.log_usage(message.from_user.id, "music_search")
+
+        await status_msg.edit_text(
+            t("music_found", lang,
+              artist=song_info["artist"],
+              title=song_info["title"],
+              album=song_info["album"]),
+            reply_markup=music_action_keyboard(lang)
+        )
+
+
+@router.callback_query(F.data == "noop")
+async def handle_noop(callback: CallbackQuery):
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("sp_"))
+async def handle_search_page(callback: CallbackQuery, db):
+    page = int(callback.data.split("_")[1])
+    user = await db.get_user(callback.from_user.id)
+    lang = user["language"] if user else "uz"
+
+    songs = await db.get_search_results(callback.from_user.id)
+    if not songs:
+        await callback.answer("❌ Qidiruv natijalari topilmadi", show_alert=True)
         return
 
-    # Save to database (survives bot restarts)
-    await db.save_song_cache(
-        message.from_user.id,
-        song_info["artist"],
-        song_info["title"],
-        song_info["album"],
-        song_info["full_title"]
+    await callback.message.edit_reply_markup(
+        reply_markup=search_results_keyboard(songs, page, lang)
     )
-    await db.log_usage(message.from_user.id, "music_search")
+    await callback.answer()
 
-    await status_msg.edit_text(
+
+@router.callback_query(F.data.startswith("ss_"))
+async def handle_song_select(callback: CallbackQuery, db):
+    idx = int(callback.data.split("_")[1])
+    user = await db.get_user(callback.from_user.id)
+    lang = user["language"] if user else "uz"
+
+    songs = await db.get_search_results(callback.from_user.id)
+    if not songs or idx >= len(songs):
+        await callback.answer("❌ Ma'lumot topilmadi", show_alert=True)
+        return
+
+    song = songs[idx]
+    await db.save_song_cache(
+        callback.from_user.id,
+        song["artist"],
+        song["title"],
+        song["album"],
+        song["full_title"]
+    )
+
+    await callback.message.edit_text(
         t("music_found", lang,
-          artist=song_info["artist"],
-          title=song_info["title"],
-          album=song_info["album"]),
+          artist=song["artist"],
+          title=song["title"],
+          album=song["album"]),
         reply_markup=music_action_keyboard(lang)
     )
+    await callback.answer()
 
 
 @router.callback_query(F.data == "dl_music")
@@ -213,7 +260,7 @@ async def handle_download_music(callback: CallbackQuery, db):
             return
 
         bot_username = (await callback.bot.get_me()).username
-        performer = song["artist"] if song["artist"] != "🔍" else ""
+        performer = song["artist"] if song["artist"] not in ("🔍", "") else ""
         await callback.message.answer_audio(
             FSInputFile(file_path),
             title=song["full_title"],
@@ -238,19 +285,8 @@ async def handle_lyrics(callback: CallbackQuery, db):
     await callback.message.edit_text(t("fetching_lyrics", lang))
     await db.log_usage(callback.from_user.id, "lyrics")
 
-    # For text-only searches, try to split "Artist - Song" or use as-is
     artist = song["artist"]
     title = song["title"]
-    if artist == "🔍":
-        if " - " in song["full_title"]:
-            parts = song["full_title"].split(" - ", 1)
-            artist = parts[0].strip()
-            title = parts[1].strip()
-        else:
-            # Can't find lyrics without knowing the exact artist and song
-            await callback.message.edit_text(t("lyrics_hint", lang))
-            await callback.answer()
-            return
 
     lyrics = await get_lyrics(artist, title)
 
@@ -259,11 +295,8 @@ async def handle_lyrics(callback: CallbackQuery, db):
         return
 
     header = f"🎤 <b>{artist}</b> — <b>{title}</b>\n\n"
-
-    # Telegram message limit: 4096 chars
     MAX_LEN = 4096 - len(header) - 10
     if len(lyrics) > MAX_LEN:
-        # Send in parts
         await callback.message.delete()
         await callback.message.answer(header + lyrics[:MAX_LEN])
         remaining = lyrics[MAX_LEN:]

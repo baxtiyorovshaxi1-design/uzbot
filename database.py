@@ -63,6 +63,13 @@ class Database:
                     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS search_results (
+                    user_id    INTEGER PRIMARY KEY,
+                    results    TEXT,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             await db.commit()
         logger.info("✅ Database initialized")
 
@@ -175,6 +182,27 @@ class Database:
             await db.execute("DELETE FROM admins WHERE user_id = ?", (user_id,))
             await db.execute("UPDATE users SET is_admin = 0 WHERE user_id = ?", (user_id,))
             await db.commit()
+
+    # ─── SEARCH RESULTS METHODS ────────────────────────────────────
+    async def save_search_results(self, user_id: int, results: list):
+        import json
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT OR REPLACE INTO search_results (user_id, results, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+            """, (user_id, json.dumps(results, ensure_ascii=False)))
+            await db.commit()
+
+    async def get_search_results(self, user_id: int) -> list:
+        import json
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                "SELECT results FROM search_results WHERE user_id = ?", (user_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                if row:
+                    return json.loads(row[0])
+                return []
 
     # ─── SONG CACHE METHODS ────────────────────────────────────────
     async def save_song_cache(self, user_id: int, artist: str, title: str, album: str, full_title: str):

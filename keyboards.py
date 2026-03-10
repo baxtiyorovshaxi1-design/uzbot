@@ -52,6 +52,37 @@ def video_quality_keyboard(lang: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+SONGS_PER_PAGE = 8
+
+
+def search_results_keyboard(songs: list, page: int, lang: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    total_pages = (len(songs) + SONGS_PER_PAGE - 1) // SONGS_PER_PAGE
+    start = page * SONGS_PER_PAGE
+    page_songs = songs[start:start + SONGS_PER_PAGE]
+
+    for i, song in enumerate(page_songs):
+        idx = start + i
+        label = f"{idx + 1}. {song['artist']} — {song['title']}"
+        if len(label) > 55:
+            label = label[:52] + "..."
+        builder.row(InlineKeyboardButton(text=label, callback_data=f"ss_{idx}"))
+
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"sp_{page - 1}"))
+    nav.append(InlineKeyboardButton(
+        text=f"{page + 1}/{total_pages}",
+        callback_data="noop"
+    ))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"sp_{page + 1}"))
+    if nav:
+        builder.row(*nav)
+
+    return builder.as_markup()
+
+
 def music_action_keyboard(lang: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(

@@ -138,9 +138,14 @@ TEXTS = {
 
     # ── MUSIC RECOGNITION ───────────────────────────────────────────
     "recognizing": {
-        "uz": "🎵 Musiqa tanilmoqda...",
-        "en": "🎵 Recognizing music...",
-        "ru": "🎵 Распознаю музыку..."
+        "uz": "🔍 Qidirilmoqda...",
+        "en": "🔍 Searching...",
+        "ru": "🔍 Ищу..."
+    },
+    "search_results_found": {
+        "uz": "🎵 <b>«{query}»</b> bo'yicha <b>{count} ta</b> natija topildi:\n\nQo'shiqni tanlang:",
+        "en": "🎵 Found <b>{count} results</b> for <b>«{query}»</b>:\n\nSelect a song:",
+        "ru": "🎵 По запросу <b>«{query}»</b> найдено <b>{count}</b> результатов:\n\nВыберите песню:"
     },
     "music_found": {
         "uz": (
