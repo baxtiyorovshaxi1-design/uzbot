@@ -87,7 +87,7 @@ async def download_song_mp3(query: str, tmpdir: str) -> str | None:
 
     cmd = [
         "yt-dlp",
-        "--extractor-args", "youtube:player_client=ios,tv_embedded",
+        "--extractor-args", "youtube:player_client=ios,android",
         f"ytsearch1:{query}",
         "-x", "--audio-format", "mp3",
         "--audio-quality", "0",
@@ -95,6 +95,8 @@ async def download_song_mp3(query: str, tmpdir: str) -> str | None:
         "--no-playlist",
         "--max-filesize", "50m"
     ]
+    if os.path.exists("/app/cookies.txt"):
+        cmd += ["--cookies", "/app/cookies.txt"]
 
     proc = await asyncio.create_subprocess_exec(
         *cmd,

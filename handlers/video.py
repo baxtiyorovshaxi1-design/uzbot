@@ -45,14 +45,17 @@ async def download_video(url: str, quality: str = "720", tmpdir: str = "/tmp") -
     """Download video using yt-dlp subprocess"""
     output_template = os.path.join(tmpdir, "%(title).50s.%(ext)s")
 
-    # Use iOS+tv_embedded clients to bypass YouTube bot detection on cloud servers
+    # Build base yt-dlp command with bot-detection bypass
     yt_base = [
         "yt-dlp",
-        "--extractor-args", "youtube:player_client=ios,tv_embedded",
+        "--extractor-args", "youtube:player_client=ios,android",
         "--no-playlist",
         "--max-filesize", "50m",
         "-o", output_template,
     ]
+    # Use YouTube cookies if available (required for cloud server IPs)
+    if os.path.exists("/app/cookies.txt"):
+        yt_base += ["--cookies", "/app/cookies.txt"]
 
     if quality == "mp3":
         cmd = yt_base + ["-x", "--audio-format", "mp3", "--audio-quality", "0", url]
