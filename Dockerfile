@@ -1,8 +1,8 @@
 FROM python:3.11-slim
 
-# Install ffmpeg (required for yt-dlp audio merging)
+# Install ffmpeg, nodejs (required by yt-dlp for YouTube JS extraction)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg && \
+    apt-get install -y --no-install-recommends ffmpeg nodejs && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

@@ -87,6 +87,7 @@ async def download_song_mp3(query: str, tmpdir: str) -> str | None:
 
     cmd = [
         "yt-dlp",
+        "--extractor-args", "youtube:player_client=ios,tv_embedded",
         f"ytsearch1:{query}",
         "-x", "--audio-format", "mp3",
         "--audio-quality", "0",
