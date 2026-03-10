@@ -1,7 +1,8 @@
 """
-🎵 Music Handler - Shazam recognition + Lyrics + Download
+🎵 Music Handler - Shazam recognition + YouTube search + Lyrics + Download
 """
 import os
+import json
 import asyncio
 import tempfile
 import logging
@@ -13,6 +14,13 @@ from keyboards import music_action_keyboard, search_results_keyboard, SONGS_PER_
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+COOKIES = "/app/cookies.txt"
+YT_ARGS = ["--extractor-args", "youtube:player_client=ios,android"]
+
+
+def _yt_cookies() -> list:
+    return ["--cookies", COOKIES] if os.path.exists(COOKIES) else []
 
 
 def _parse_track(track: dict) -> dict:
@@ -28,7 +36,8 @@ def _parse_track(track: dict) -> dict:
         "artist": artist,
         "title": title,
         "album": album,
-        "full_title": f"{artist} - {title}" if artist else title
+        "full_title": f"{artist} - {title}" if artist else title,
+        "url": None
     }
 
 
@@ -46,28 +55,65 @@ async def recognize_audio(file_path: str) -> dict | None:
         return None
 
 
-async def search_songs(query: str, limit: int = 40) -> list:
-    """Search multiple songs by text using Shazam"""
+async def search_songs_youtube(query: str, limit: int = 40) -> list:
+    """Search YouTube for music and return paginated results"""
+    cmd = [
+        "yt-dlp",
+        *YT_ARGS,
+        f"ytsearch{limit}:{query}",
+        "--dump-json",
+        "--flat-playlist",
+        "--no-playlist",
+        "--quiet",
+    ] + _yt_cookies()
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
     try:
-        from shazamio import Shazam
-        shazam = Shazam()
-        results = await shazam.search_track(query=query, limit=limit)
-        if not results:
-            return []
-        hits = results.get("tracks", {}).get("hits", [])
-        songs = []
-        for hit in hits:
-            track = hit.get("track", {})
-            if track:
-                songs.append(_parse_track(track))
-        return songs
-    except Exception as e:
-        logger.error(f"Shazam search error: {e}")
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+    except asyncio.TimeoutError:
+        proc.kill()
         return []
+
+    songs = []
+    for line in stdout.decode(errors="ignore").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            data = json.loads(line)
+            title = data.get("title", "")
+            video_id = data.get("id", "")
+            uploader = data.get("uploader") or data.get("channel") or ""
+            if not title or not video_id:
+                continue
+
+            if " - " in title:
+                parts = title.split(" - ", 1)
+                artist = parts[0].strip()
+                song_title = parts[1].strip()
+            else:
+                artist = uploader
+                song_title = title
+
+            songs.append({
+                "artist": artist,
+                "title": song_title,
+                "album": "—",
+                "full_title": title,
+                "url": f"https://www.youtube.com/watch?v={video_id}"
+            })
+        except Exception:
+            continue
+
+    return songs
 
 
 async def get_lyrics(artist: str, title: str) -> str | None:
-    """Get lyrics from lyrics.ovh (free, no key)"""
+    """Get lyrics from lyrics.ovh"""
     try:
         import aiohttp
         url = f"https://api.lyrics.ovh/v1/{artist}/{title}"
@@ -81,22 +127,23 @@ async def get_lyrics(artist: str, title: str) -> str | None:
     return None
 
 
-async def download_song_mp3(query: str, tmpdir: str) -> str | None:
+async def download_song_mp3(query: str, tmpdir: str, url: str = None) -> str | None:
     """Download song from YouTube as MP3"""
     output_template = os.path.join(tmpdir, "%(title).50s.%(ext)s")
 
+    # Use direct URL if available, otherwise search
+    source = url if url else f"ytsearch1:{query}"
+
     cmd = [
         "yt-dlp",
-        "--extractor-args", "youtube:player_client=ios,android",
-        f"ytsearch1:{query}",
+        *YT_ARGS,
+        source,
         "-x", "--audio-format", "mp3",
         "--audio-quality", "0",
         "-o", output_template,
         "--no-playlist",
-        "--max-filesize", "50m"
-    ]
-    if os.path.exists("/app/cookies.txt"):
-        cmd += ["--cookies", "/app/cookies.txt"]
+        "--max-filesize", "50m",
+    ] + _yt_cookies()
 
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -104,7 +151,9 @@ async def download_song_mp3(query: str, tmpdir: str) -> str | None:
         stderr=asyncio.subprocess.PIPE
     )
     try:
-        await asyncio.wait_for(proc.communicate(), timeout=120)
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+        if proc.returncode != 0:
+            logger.error(f"yt-dlp error: {stderr.decode()[:500]}")
     except asyncio.TimeoutError:
         proc.kill()
         return None
@@ -118,7 +167,6 @@ async def download_song_mp3(query: str, tmpdir: str) -> str | None:
 
 @router.message(F.voice | F.audio | F.text)
 async def handle_audio_or_text(message: Message, db):
-    # Ignore menu/command texts
     if message.text and message.text.startswith("/") or message.text in {
         "🎬 Video yuklab olish", "🎬 Download Video", "🎬 Скачать Видео",
         "🎵 Musiqa tanish", "🎵 Recognize Music", "🎵 Распознать музыку", "🎵 Musiqa qidirish",
@@ -137,7 +185,7 @@ async def handle_audio_or_text(message: Message, db):
         status_msg = await message.answer(t("recognizing", lang))
         query = message.text.strip()
 
-        songs = await search_songs(query, limit=40)
+        songs = await search_songs_youtube(query, limit=40)
 
         if not songs:
             await status_msg.edit_text(t("music_not_found", lang))
@@ -146,14 +194,13 @@ async def handle_audio_or_text(message: Message, db):
         await db.save_search_results(message.from_user.id, songs)
         await db.log_usage(message.from_user.id, "music_search")
 
-        total_pages = (len(songs) + SONGS_PER_PAGE - 1) // SONGS_PER_PAGE
         await status_msg.edit_text(
             t("search_results_found", lang, count=len(songs), query=query),
             reply_markup=search_results_keyboard(songs, 0, lang)
         )
 
     else:
-        # Recognize from audio/voice
+        # Recognize from audio/voice with Shazam
         status_msg = await message.answer(t("recognizing", lang))
         with tempfile.TemporaryDirectory() as tmpdir:
             if message.voice:
@@ -171,10 +218,8 @@ async def handle_audio_or_text(message: Message, db):
 
         await db.save_song_cache(
             message.from_user.id,
-            song_info["artist"],
-            song_info["title"],
-            song_info["album"],
-            song_info["full_title"]
+            song_info["artist"], song_info["title"],
+            song_info["album"], song_info["full_title"]
         )
         await db.log_usage(message.from_user.id, "music_search")
 
@@ -223,10 +268,9 @@ async def handle_song_select(callback: CallbackQuery, db):
     song = songs[idx]
     await db.save_song_cache(
         callback.from_user.id,
-        song["artist"],
-        song["title"],
-        song["album"],
-        song["full_title"]
+        song["artist"], song["title"],
+        song["album"], song["full_title"],
+        url=song.get("url")
     )
 
     await callback.message.edit_text(
@@ -253,7 +297,9 @@ async def handle_download_music(callback: CallbackQuery, db):
     await db.log_usage(callback.from_user.id, "music_download")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        file_path = await download_song_mp3(song["full_title"], tmpdir)
+        file_path = await download_song_mp3(
+            song["full_title"], tmpdir, url=song.get("url")
+        )
 
         if not file_path:
             await callback.message.edit_text(t("download_error", lang))
@@ -285,16 +331,13 @@ async def handle_lyrics(callback: CallbackQuery, db):
     await callback.message.edit_text(t("fetching_lyrics", lang))
     await db.log_usage(callback.from_user.id, "lyrics")
 
-    artist = song["artist"]
-    title = song["title"]
-
-    lyrics = await get_lyrics(artist, title)
+    lyrics = await get_lyrics(song["artist"], song["title"])
 
     if not lyrics:
         await callback.message.edit_text(t("lyrics_not_found", lang))
         return
 
-    header = f"🎤 <b>{artist}</b> — <b>{title}</b>\n\n"
+    header = f"🎤 <b>{song['artist']}</b> — <b>{song['title']}</b>\n\n"
     MAX_LEN = 4096 - len(header) - 10
     if len(lyrics) > MAX_LEN:
         await callback.message.delete()

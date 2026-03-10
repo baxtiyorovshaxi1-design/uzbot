@@ -60,6 +60,7 @@ class Database:
                     title      TEXT,
                     album      TEXT,
                     full_title TEXT,
+                    url        TEXT DEFAULT NULL,
                     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -205,12 +206,12 @@ class Database:
                 return []
 
     # ─── SONG CACHE METHODS ────────────────────────────────────────
-    async def save_song_cache(self, user_id: int, artist: str, title: str, album: str, full_title: str):
+    async def save_song_cache(self, user_id: int, artist: str, title: str, album: str, full_title: str, url: str = None):
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
-                INSERT OR REPLACE INTO song_cache (user_id, artist, title, album, full_title, updated_at)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (user_id, artist, title, album, full_title))
+                INSERT OR REPLACE INTO song_cache (user_id, artist, title, album, full_title, url, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (user_id, artist, title, album, full_title, url))
             await db.commit()
 
     async def get_song_cache(self, user_id: int) -> dict | None:
