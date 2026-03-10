@@ -23,9 +23,7 @@ async def recognize_audio(file_path: str) -> dict | None:
     try:
         from shazamio import Shazam
         shazam = Shazam()
-        with open(file_path, "rb") as f:
-            data = f.read()
-        result = await shazam.recognize_song(data)
+        result = await shazam.recognize(file_path)
 
         if not result or "track" not in result:
             return None
