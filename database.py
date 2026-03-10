@@ -53,6 +53,16 @@ class Database:
                     added_at    TEXT DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS song_cache (
+                    user_id    INTEGER PRIMARY KEY,
+                    artist     TEXT,
+                    title      TEXT,
+                    album      TEXT,
+                    full_title TEXT,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             await db.commit()
         logger.info("✅ Database initialized")
 
@@ -165,6 +175,26 @@ class Database:
             await db.execute("DELETE FROM admins WHERE user_id = ?", (user_id,))
             await db.execute("UPDATE users SET is_admin = 0 WHERE user_id = ?", (user_id,))
             await db.commit()
+
+    # ─── SONG CACHE METHODS ────────────────────────────────────────
+    async def save_song_cache(self, user_id: int, artist: str, title: str, album: str, full_title: str):
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT OR REPLACE INTO song_cache (user_id, artist, title, album, full_title, updated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (user_id, artist, title, album, full_title))
+            await db.commit()
+
+    async def get_song_cache(self, user_id: int) -> dict | None:
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM song_cache WHERE user_id = ?", (user_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                if row:
+                    return dict(row)
+                return None
 
     # ─── CHANNEL METHODS ───────────────────────────────────────────
     async def add_required_channel(self, channel_id: str, channel_name: str, channel_link: str):

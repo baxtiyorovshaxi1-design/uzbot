@@ -14,30 +14,55 @@ from keyboards import music_action_keyboard
 logger = logging.getLogger(__name__)
 router = Router()
 
-# Store recognized song info temporarily
-recognized_songs: dict = {}
+
+def _parse_track(track: dict) -> dict:
+    """Extract song info from a Shazam track object"""
+    artist = track.get("subtitle", "")
+    title = track.get("title", "")
+    album = "—"
+    if track.get("sections"):
+        metadata = track["sections"][0].get("metadata", [])
+        if metadata:
+            album = metadata[0].get("text", "—")
+    return {
+        "artist": artist,
+        "title": title,
+        "album": album,
+        "full_title": f"{artist} - {title}" if artist else title
+    }
 
 
 async def recognize_audio(file_path: str) -> dict | None:
-    """Recognize music using shazamio (free Shazam API wrapper)"""
+    """Recognize music from audio file using Shazam"""
     try:
         from shazamio import Shazam
         shazam = Shazam()
         result = await shazam.recognize(file_path)
-
         if not result or "track" not in result:
             return None
-
-        track = result["track"]
-        return {
-            "artist": track.get("subtitle", "Unknown"),
-            "title": track.get("title", "Unknown"),
-            "album": track.get("sections", [{}])[0].get("metadata", [{}])[0].get("text", "—")
-                if track.get("sections") else "—",
-            "full_title": f"{track.get('subtitle', '')} - {track.get('title', '')}"
-        }
+        return _parse_track(result["track"])
     except Exception as e:
-        logger.error(f"Shazam error: {e}")
+        logger.error(f"Shazam recognize error: {e}")
+        return None
+
+
+async def search_song(query: str) -> dict | None:
+    """Search for a song by any text using Shazam"""
+    try:
+        from shazamio import Shazam
+        shazam = Shazam()
+        results = await shazam.search_track(query=query, limit=1)
+        if not results:
+            return None
+        hits = results.get("tracks", {}).get("hits", [])
+        if not hits:
+            return None
+        track = hits[0].get("track", {})
+        if not track:
+            return None
+        return _parse_track(track)
+    except Exception as e:
+        logger.error(f"Shazam search error: {e}")
         return None
 
 
@@ -107,23 +132,26 @@ async def handle_audio_or_text(message: Message, db):
     lang = user["language"] if user else "uz"
 
     if message.text:
-        # Search music by text
+        # Search music by text using Shazam
         status_msg = await message.answer(t("recognizing", lang))
         query = message.text.strip()
-        # Parse "Artist - Song" format if present, otherwise use query as both
-        if " - " in query:
-            parts = query.split(" - ", 1)
-            artist = parts[0].strip()
-            title = parts[1].strip()
-        else:
-            artist = query
-            title = query
-        song_info = {
-            "artist": artist,
-            "title": title,
-            "album": "—",
-            "full_title": query
-        }
+        song_info = await search_song(query)
+
+        # Fallback if Shazam search fails
+        if not song_info:
+            if " - " in query:
+                parts = query.split(" - ", 1)
+                artist = parts[0].strip()
+                title = parts[1].strip()
+            else:
+                artist = "🔍"
+                title = query
+            song_info = {
+                "artist": artist,
+                "title": title,
+                "album": "—",
+                "full_title": query
+            }
     else:
         # Recognize from audio/voice
         status_msg = await message.answer(t("recognizing", lang))
@@ -142,8 +170,14 @@ async def handle_audio_or_text(message: Message, db):
         await status_msg.edit_text(t("music_not_found", lang))
         return
 
-    # Cache song info
-    recognized_songs[message.from_user.id] = song_info
+    # Save to database (survives bot restarts)
+    await db.save_song_cache(
+        message.from_user.id,
+        song_info["artist"],
+        song_info["title"],
+        song_info["album"],
+        song_info["full_title"]
+    )
     await db.log_usage(message.from_user.id, "music_search")
 
     await status_msg.edit_text(
@@ -160,7 +194,7 @@ async def handle_download_music(callback: CallbackQuery, db):
     user = await db.get_user(callback.from_user.id)
     lang = user["language"] if user else "uz"
 
-    song = recognized_songs.get(callback.from_user.id)
+    song = await db.get_song_cache(callback.from_user.id)
     if not song:
         await callback.answer("❌ Ma'lumot topilmadi", show_alert=True)
         return
@@ -176,10 +210,11 @@ async def handle_download_music(callback: CallbackQuery, db):
             return
 
         bot_username = (await callback.bot.get_me()).username
+        performer = song["artist"] if song["artist"] != "🔍" else ""
         await callback.message.answer_audio(
             FSInputFile(file_path),
-            title=song["title"],
-            performer=song["artist"],
+            title=song["full_title"],
+            performer=performer,
             caption=f"🎵 {song['full_title']} | @{bot_username}"
         )
         await callback.message.delete()
@@ -192,7 +227,7 @@ async def handle_lyrics(callback: CallbackQuery, db):
     user = await db.get_user(callback.from_user.id)
     lang = user["language"] if user else "uz"
 
-    song = recognized_songs.get(callback.from_user.id)
+    song = await db.get_song_cache(callback.from_user.id)
     if not song:
         await callback.answer("❌ Ma'lumot topilmadi", show_alert=True)
         return
@@ -200,13 +235,27 @@ async def handle_lyrics(callback: CallbackQuery, db):
     await callback.message.edit_text(t("fetching_lyrics", lang))
     await db.log_usage(callback.from_user.id, "lyrics")
 
-    lyrics = await get_lyrics(song["artist"], song["title"])
+    # For text-only searches, try to split "Artist - Song" or use as-is
+    artist = song["artist"]
+    title = song["title"]
+    if artist == "🔍":
+        if " - " in song["full_title"]:
+            parts = song["full_title"].split(" - ", 1)
+            artist = parts[0].strip()
+            title = parts[1].strip()
+        else:
+            # Can't find lyrics without knowing the exact artist and song
+            await callback.message.edit_text(t("lyrics_hint", lang))
+            await callback.answer()
+            return
+
+    lyrics = await get_lyrics(artist, title)
 
     if not lyrics:
         await callback.message.edit_text(t("lyrics_not_found", lang))
         return
 
-    header = f"🎤 <b>{song['artist']}</b> — <b>{song['title']}</b>\n\n"
+    header = f"🎤 <b>{artist}</b> — <b>{title}</b>\n\n"
 
     # Telegram message limit: 4096 chars
     MAX_LEN = 4096 - len(header) - 10

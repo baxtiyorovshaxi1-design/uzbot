@@ -190,6 +190,11 @@ TEXTS = {
         "en": "❌ Lyrics not found.",
         "ru": "❌ Текст песни не найден."
     },
+    "lyrics_hint": {
+        "uz": "ℹ️ Musiqa matni uchun qo'shiq nomini <b>«Artist - Qo'shiq»</b> formatida yozing.\n\nMasalan: <code>Doxxim - Yo'q edi</code>",
+        "en": "ℹ️ To get lyrics, type the song in <b>«Artist - Song»</b> format.\n\nExample: <code>Adele - Hello</code>",
+        "ru": "ℹ️ Для получения текста введите песню в формате <b>«Артист - Песня»</b>.\n\nПример: <code>Eminem - Lose Yourself</code>"
+    },
 
     # ── ADMIN ───────────────────────────────────────────────────────
     "not_admin": {
